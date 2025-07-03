@@ -125,7 +125,7 @@ const BookingsTab: React.FC<BookingsTabProps> = ({ bookings, onUpdateBookingStat
         const error = await response.json()
         alert(`Failed to send email: ${error.error}`)
       }
-    } catch (error) {
+    } catch (error: any) {
       alert(`Error sending email: ${error.message}`)
     } finally {
       setSendingEmails(prev => ({ ...prev, [booking.id]: false }))
@@ -197,6 +197,12 @@ const BookingsTab: React.FC<BookingsTabProps> = ({ bookings, onUpdateBookingStat
                     Dates
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Pick-up Time
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Drop-off Time
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Duration
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -237,8 +243,14 @@ const BookingsTab: React.FC<BookingsTabProps> = ({ bookings, onUpdateBookingStat
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div>Start: {formatDate(booking.start_date)}</div>
-                        <div>End: {formatDate(booking.end_date)}</div>
+                        Start: {formatDate(booking.start_date)}<br/>
+                        End: {formatDate(booking.end_date)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {booking.pickup_time}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {booking.dropoff_time}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {getDurationText(booking.duration_hours)}
