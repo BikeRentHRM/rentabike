@@ -1,508 +1,634 @@
-import React, { useState } from 'react'
-import { Check, X, Mail, Clock, AlertTriangle, Edit2, Save } from 'lucide-react'
-import { Booking } from '../../types'
+import React, { useState, useEffect } from 'react'
+import { X, User, Phone, Mail, Zap, DollarSign, MapPin, CreditCard, CheckCircle, Clock, Sparkles, AlertCircle, FileText } from 'lucide-react'
+import { format, differenceInDays } from 'date-fns'
+import { Link } from 'react-router-dom'
+import CalendarPicker from './CalendarPicker'
+import { Bike } from '../types'
 
-interface BookingsTabProps {
-  bookings: Booking[]
-  onUpdateBookingStatus: (bookingId: string, status: string) => void
-  onUpdateBookingTimes?: (bookingId: string, pickupTime: string, dropoffTime: string) => void
+interface BookingModalProps {
+  bike: Bike | null
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (bookingData: any) => Promise<any>
 }
 
-const BookingsTab: React.FC<BookingsTabProps> = ({ 
-  bookings, 
-  onUpdateBookingStatus, 
-  onUpdateBookingTimes 
-}) => {
-  const [pendingChanges, setPendingChanges] = useState<{[key: string]: string}>({})
-  const [showConfirmation, setShowConfirmation] = useState<{[key: string]: boolean}>({})
-  const [sendingEmails, setSendingEmails] = useState<{[key: string]: boolean}>({})
-  const [editingTimes, setEditingTimes] = useState<{[key: string]: boolean}>({})
-  const [tempTimes, setTempTimes] = useState<{[key: string]: {pickup: string, dropoff: string}}>({})
+const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    customerName: '',
+    customerEmail: '',
+    customerPhone: '',
+    specialRequests: ''
+  })
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'confirmed':
-        return 'bg-green-100 text-green-800'
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'completed':
-        return 'bg-blue-100 text-blue-800'
-      case 'cancelled':
-        return 'bg-red-100 text-red-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
+  const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null)
+  const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [showError, setShowError] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [animationStep, setAnimationStep] = useState(0)
+  const [bookedDates, setBookedDates] = useState<Date[]>([])
+  const [loadingBookedDates, setLoadingBookedDates] = useState(false)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-CA', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
+  // Fetch booked dates for the selected bike
+  const fetchBookedDates = async (bikeId: string) => {
+    if (!bikeId) return
 
-  const formatTime = (timeString: string) => {
-    if (!timeString) return 'Not set'
-    // Handle both HH:MM and HH:MM:SS formats
-    const timeParts = timeString.split(':')
-    const hours = parseInt(timeParts[0])
-    const minutes = timeParts[1]
-    const period = hours >= 12 ? 'PM' : 'AM'
-    const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
-    return `${displayHours}:${minutes} ${period}`
-  }
-
-  const getDurationText = (durationHours: number) => {
-    const days = Math.ceil(durationHours / 24)
-    return `${days} day${days > 1 ? 's' : ''}`
-  }
-
-  const getTimeRemaining = (createdAt: string) => {
-    const created = new Date(createdAt)
-    const now = new Date()
-    const threeHoursLater = new Date(created.getTime() + 3 * 60 * 60 * 1000)
-    const timeLeft = threeHoursLater.getTime() - now.getTime()
-    
-    if (timeLeft <= 0) return 'Expired'
-    
-    const hours = Math.floor(timeLeft / (1000 * 60 * 60))
-    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60))
-    
-    return `${hours}h ${minutes}m left`
-  }
-
-  const isPendingExpired = (booking: Booking) => {
-    if (booking.status !== 'pending') return false
-    
-    const created = new Date(booking.created_at)
-    const now = new Date()
-    const threeHoursLater = new Date(created.getTime() + 3 * 60 * 60 * 1000)
-    
-    return now > threeHoursLater
-  }
-
-  const handleStatusChange = (bookingId: string, newStatus: string) => {
-    setPendingChanges(prev => ({ ...prev, [bookingId]: newStatus }))
-    setShowConfirmation(prev => ({ ...prev, [bookingId]: true }))
-  }
-
-  const confirmStatusChange = async (bookingId: string) => {
-    const newStatus = pendingChanges[bookingId]
-    if (newStatus) {
-      setSendingEmails(prev => ({ ...prev, [bookingId]: true }))
-      
-      try {
-        await onUpdateBookingStatus(bookingId, newStatus)
-        
-        setPendingChanges(prev => {
-          const updated = { ...prev }
-          delete updated[bookingId]
-          return updated
-        })
-        setShowConfirmation(prev => ({ ...prev, [bookingId]: false }))
-      } catch (error) {
-        console.error('Failed to update booking status:', error)
-      } finally {
-        setSendingEmails(prev => ({ ...prev, [bookingId]: false }))
-      }
-    }
-  }
-
-  const cancelStatusChange = (bookingId: string) => {
-    setPendingChanges(prev => {
-      const updated = { ...prev }
-      delete updated[bookingId]
-      return updated
-    })
-    setShowConfirmation(prev => ({ ...prev, [bookingId]: false }))
-  }
-
-  const handleEditTimes = (bookingId: string, currentPickup: string, currentDropoff: string) => {
-    setEditingTimes(prev => ({ ...prev, [bookingId]: true }))
-    setTempTimes(prev => ({ 
-      ...prev, 
-      [bookingId]: { 
-        pickup: currentPickup || '09:00', 
-        dropoff: currentDropoff || '17:00' 
-      } 
-    }))
-  }
-
-  const handleSaveTimes = async (bookingId: string) => {
-    const times = tempTimes[bookingId]
-    if (times && onUpdateBookingTimes) {
-      try {
-        await onUpdateBookingTimes(bookingId, times.pickup, times.dropoff)
-        setEditingTimes(prev => ({ ...prev, [bookingId]: false }))
-        setTempTimes(prev => {
-          const updated = { ...prev }
-          delete updated[bookingId]
-          return updated
-        })
-      } catch (error) {
-        console.error('Failed to update booking times:', error)
-        alert('Failed to update times. Please try again.')
-      }
-    }
-  }
-
-  const handleCancelEditTimes = (bookingId: string) => {
-    setEditingTimes(prev => ({ ...prev, [bookingId]: false }))
-    setTempTimes(prev => {
-      const updated = { ...prev }
-      delete updated[bookingId]
-      return updated
-    })
-  }
-
-  const sendTestEmail = async (booking: Booking) => {
-    setSendingEmails(prev => ({ ...prev, [booking.id]: true }))
+    setLoadingBookedDates(true)
     
     try {
-      const response = await fetch('/.netlify/functions/send-booking-email', {
-        method: 'POST',
+      const response = await fetch(`/.netlify/functions/get-booked-dates?bike_id=${bikeId}`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          booking,
-          bike: booking.bikes,
-          type: 'status_update',
-          previousStatus: booking.status
-        })
       })
 
+      const data = await response.json()
+
       if (response.ok) {
-        alert('Test email sent successfully!')
+        // Convert ISO strings back to Date objects
+        const dates = (data.bookedDates || []).map((dateStr: string) => {
+          return new Date(dateStr)
+        })
+        
+        setBookedDates(dates)
       } else {
-        const error = await response.json()
-        alert(`Failed to send email: ${error.error}`)
+        setBookedDates([])
       }
     } catch (error) {
-      alert(`Error sending email: ${error.message}`)
+      setBookedDates([])
     } finally {
-      setSendingEmails(prev => ({ ...prev, [booking.id]: false }))
+      setLoadingBookedDates(false)
     }
   }
 
-  // Sort bookings: pending first, then by creation date
-  const sortedBookings = [...bookings].sort((a, b) => {
-    if (a.status === 'pending' && b.status !== 'pending') return -1
-    if (a.status !== 'pending' && b.status === 'pending') return 1
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  })
+  // Fetch booked dates when bike changes or modal opens
+  useEffect(() => {
+    if (bike?.id && isOpen) {
+      fetchBookedDates(bike.id)
+    }
+  }, [bike?.id, isOpen])
+
+  const handleDateRangeChange = (startDate: Date | null, endDate: Date | null) => {
+    setSelectedStartDate(startDate)
+    setSelectedEndDate(endDate)
+    // Clear any previous errors when dates change
+    setShowError(false)
+    setErrorMessage('')
+  }
+
+  // Handle clicking outside the modal
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget && !showConfirmation) {
+      onClose()
+    }
+  }
+
+  const calculateCost = () => {
+    if (!bike || !selectedStartDate) return 0
+    
+    const endDate = selectedEndDate || selectedStartDate
+    const days = Math.max(1, differenceInDays(endDate, selectedStartDate) + 1)
+    
+    return days * bike.price_per_day
+  }
+
+  const getDays = () => {
+    if (!selectedStartDate) return 0
+    
+    const endDate = selectedEndDate || selectedStartDate
+    return Math.max(1, differenceInDays(endDate, selectedStartDate) + 1)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!selectedStartDate) {
+      setErrorMessage('Please select rental dates')
+      setShowError(true)
+      return
+    }
+
+    if (!acceptedTerms) {
+      setErrorMessage('Please accept the Terms and Conditions to proceed with your booking')
+      setShowError(true)
+      return
+    }
+    
+    setIsSubmitting(true)
+    setShowError(false)
+    setErrorMessage('')
+    
+    const endDate = selectedEndDate || selectedStartDate
+    const days = getDays()
+    
+    const bookingData = {
+      bike_id: bike?.id,
+      customer_name: formData.customerName,
+      customer_email: formData.customerEmail,
+      customer_phone: formData.customerPhone,
+      start_date: selectedStartDate.toISOString(),
+      end_date: endDate.toISOString(),
+      duration_hours: days * 24,
+      total_cost: calculateCost(),
+      special_requests: formData.specialRequests,
+      status: 'pending'
+    }
+    
+    try {
+      await onSubmit(bookingData)
+      setIsSubmitting(false)
+      setShowConfirmation(true)
+      
+      // Start animation sequence
+      setTimeout(() => setAnimationStep(1), 100)
+      setTimeout(() => setAnimationStep(2), 800)
+      setTimeout(() => setAnimationStep(3), 1500)
+    } catch (error) {
+      setIsSubmitting(false)
+      setErrorMessage(error.message || 'Failed to create booking. Please try again.')
+      setShowError(true)
+    }
+  }
+
+  const handleCloseModal = () => {
+    setShowConfirmation(false)
+    setShowError(false)
+    setErrorMessage('')
+    setAnimationStep(0)
+    onClose()
+  }
+
+  const handleRetryBooking = () => {
+    setShowError(false)
+    setErrorMessage('')
+    // Refresh booked dates in case they changed
+    if (bike?.id) {
+      fetchBookedDates(bike.id)
+    }
+  }
+
+  // Reset form when modal opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        customerName: '',
+        customerEmail: '',
+        customerPhone: '',
+        specialRequests: ''
+      })
+      setSelectedStartDate(null)
+      setSelectedEndDate(null)
+      setShowConfirmation(false)
+      setShowError(false)
+      setErrorMessage('')
+      setAnimationStep(0)
+      setBookedDates([])
+      setAcceptedTerms(false)
+    }
+  }, [isOpen])
+
+  if (!isOpen || !bike) return null
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-lg font-semibold">Booking Management</h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Manage customer bookings and update status with automatic email notifications
-          </p>
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={handleBackdropClick}
+    >
+      <div className="bg-white rounded-xl max-w-5xl w-full max-h-[95vh] overflow-y-auto shadow-2xl">
+        <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-t-xl">
+          <div>
+            <h2 className="text-xl font-bold">
+              {showConfirmation ? 'Booking Confirmed!' : showError ? 'Booking Failed' : `Book ${bike.name}`}
+            </h2>
+            <p className="text-blue-100 text-sm">
+              {showConfirmation ? 'Payment required within 3 hours' : 
+               showError ? 'Please try again or contact us' :
+               'Best daily rates in Halifax Regional Municipality!'}
+            </p>
+          </div>
+          <button
+            onClick={handleCloseModal}
+            className="text-white hover:text-gray-200 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <div className="text-sm text-gray-500">
-          Total Bookings: {bookings.length} | 
-          Pending: {bookings.filter(b => b.status === 'pending').length} | 
-          Confirmed: {bookings.filter(b => b.status === 'confirmed').length}
-        </div>
-      </div>
+        
+        {showError ? (
+          // Error Screen
+          <div className="p-6 space-y-6">
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-100 mb-4">
+                <AlertCircle className="h-12 w-12 text-red-600" />
+              </div>
+              
+              <h3 className="text-2xl font-bold text-red-800 mb-2">Booking Failed</h3>
+              <p className="text-red-600 mb-4">{errorMessage}</p>
+            </div>
 
-      {/* Pending Bookings Alert */}
-      {bookings.filter(b => b.status === 'pending').length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
-            <h3 className="text-yellow-800 font-medium">
-              {bookings.filter(b => b.status === 'pending').length} Pending Payment(s)
-            </h3>
-          </div>
-          <p className="text-yellow-700 text-sm mt-1">
-            Monitor for e-transfers and confirm bookings once payment is received. 
-            Bookings expire after 3 hours if payment is not received.
-          </p>
-        </div>
-      )}
-
-      {bookings.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg shadow">
-          <div className="text-gray-400 mb-4">
-            <svg className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 0V7a2 2 0 012-2h4a2 2 0 012 2v0M8 7v10a2 2 0 002 2h4a2 2 0 002-2V7M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No bookings yet</h3>
-          <p className="text-gray-500">Bookings will appear here when customers make reservations.</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Bike
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Dates
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Duration
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pickup/Dropoff Times
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cost
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {sortedBookings.map((booking) => {
-                  const isExpired = isPendingExpired(booking)
-                  const isEditingTime = editingTimes[booking.id]
-                  const currentTimes = tempTimes[booking.id]
-                  
-                  return (
-                    <tr key={booking.id} className={`hover:bg-gray-50 ${isExpired ? 'bg-red-50' : ''}`}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {booking.customer_name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {booking.customer_email}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {booking.customer_phone}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {booking.bikes?.name || 'N/A'}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {booking.bikes?.type || 'Unknown Type'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div>Start: {formatDate(booking.start_date)}</div>
-                        <div>End: {formatDate(booking.end_date)}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {getDurationText(booking.duration_hours)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {isEditingTime ? (
-                          <div className="space-y-2">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700">Pickup</label>
-                              <input
-                                type="time"
-                                value={currentTimes?.pickup || '09:00'}
-                                onChange={(e) => setTempTimes(prev => ({
-                                  ...prev,
-                                  [booking.id]: {
-                                    ...prev[booking.id],
-                                    pickup: e.target.value
-                                  }
-                                }))}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700">Dropoff</label>
-                              <input
-                                type="time"
-                                value={currentTimes?.dropoff || '17:00'}
-                                onChange={(e) => setTempTimes(prev => ({
-                                  ...prev,
-                                  [booking.id]: {
-                                    ...prev[booking.id],
-                                    dropoff: e.target.value
-                                  }
-                                }))}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              />
-                            </div>
-                            <div className="flex space-x-1">
-                              <button
-                                onClick={() => handleSaveTimes(booking.id)}
-                                className="bg-green-500 hover:bg-green-600 text-white p-1 rounded transition-colors"
-                                title="Save times"
-                              >
-                                <Save className="h-3 w-3" />
-                              </button>
-                              <button
-                                onClick={() => handleCancelEditTimes(booking.id)}
-                                className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded transition-colors"
-                                title="Cancel edit"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <div className="flex items-center">
-                              <span className="text-xs font-medium text-gray-700 mr-2">Pickup:</span>
-                              <span className="text-xs">{formatTime(booking.pickup_time)}</span>
-                            </div>
-                            <div className="flex items-center">
-                              <span className="text-xs font-medium text-gray-700 mr-2">Dropoff:</span>
-                              <span className="text-xs">{formatTime(booking.dropoff_time)}</span>
-                            </div>
-                            {onUpdateBookingTimes && (
-                              <button
-                                onClick={() => handleEditTimes(booking.id, booking.pickup_time, booking.dropoff_time)}
-                                className="text-blue-500 hover:text-blue-700 p-1 rounded transition-colors"
-                                title="Edit times"
-                              >
-                                <Edit2 className="h-3 w-3" />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                        ${booking.total_cost}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="space-y-1">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(booking.status)}`}>
-                            {booking.status}
-                          </span>
-                          {booking.status === 'pending' && (
-                            <div className={`text-xs ${isExpired ? 'text-red-600 font-bold' : 'text-yellow-600'}`}>
-                              <Clock className="h-3 w-3 inline mr-1" />
-                              {isExpired ? 'EXPIRED' : getTimeRemaining(booking.created_at)}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex items-center space-x-2">
-                          <select
-                            value={pendingChanges[booking.id] || booking.status}
-                            onChange={(e) => handleStatusChange(booking.id, e.target.value)}
-                            className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            disabled={sendingEmails[booking.id]}
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="confirmed">Confirmed</option>
-                            <option value="completed">Completed</option>
-                            <option value="cancelled">Cancelled</option>
-                          </select>
-                          
-                          {showConfirmation[booking.id] && (
-                            <div className="flex items-center space-x-1">
-                              <button
-                                onClick={() => confirmStatusChange(booking.id)}
-                                disabled={sendingEmails[booking.id]}
-                                className="bg-green-500 hover:bg-green-600 text-white p-1 rounded transition-colors disabled:opacity-50"
-                                title="Confirm status change and send email"
-                              >
-                                {sendingEmails[booking.id] ? (
-                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                                ) : (
-                                  <Check className="h-3 w-3" />
-                                )}
-                              </button>
-                              <button
-                                onClick={() => cancelStatusChange(booking.id)}
-                                disabled={sendingEmails[booking.id]}
-                                className="bg-red-500 hover:bg-red-600 text-white p-1 rounded transition-colors disabled:opacity-50"
-                                title="Cancel status change"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </div>
-                          )}
-
-                          <button
-                            onClick={() => sendTestEmail(booking)}
-                            disabled={sendingEmails[booking.id]}
-                            className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded transition-colors disabled:opacity-50"
-                            title="Send test email"
-                          >
-                            {sendingEmails[booking.id] ? (
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                            ) : (
-                              <Mail className="h-3 w-3" />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Special requests section */}
-      {bookings.some(booking => booking.special_requests) && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Special Requests</h3>
-          <div className="space-y-4">
-            {bookings
-              .filter(booking => booking.special_requests)
-              .map((booking) => (
-                <div key={booking.id} className="border-l-4 border-blue-500 pl-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-gray-900">{booking.customer_name}</p>
-                      <p className="text-sm text-gray-600">{booking.bikes?.name}</p>
-                    </div>
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(booking.status)}`}>
-                      {booking.status}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-700 mt-2">{booking.special_requests}</p>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-      
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start">
-          <div className="flex-shrink-0">
-            <span className="text-blue-500 text-lg">📧</span>
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">Automated Email System</h3>
-            <div className="mt-2 text-sm text-blue-700">
-              <p>Status changes automatically trigger email notifications:</p>
-              <ul className="mt-2 list-disc list-inside space-y-1">
-                <li><strong>Pending:</strong> Customer gets payment instructions, admin gets notification</li>
-                <li><strong>Confirmed:</strong> Customer gets pickup instructions, admin gets confirmation</li>
-                <li><strong>Cancelled:</strong> Customer gets cancellation notice, admin gets update</li>
-                <li><strong>Completed:</strong> Customer gets thank you message, admin gets completion notice</li>
+            <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+              <h4 className="font-semibold text-red-800 mb-2">What you can do:</h4>
+              <ul className="text-red-700 text-sm space-y-1">
+                <li>• Try selecting different dates</li>
+                <li>• Check if the dates are already booked (shown in red)</li>
+                <li>• Contact us directly at (902) 414-5894</li>
+                <li>• Email us at rentabikehrm@gmail.com</li>
               </ul>
-              <p className="mt-2 font-medium">💡 Use the mail icon to send test emails for any booking</p>
-              <p className="mt-1 font-medium">⏰ Click the edit icon to modify pickup/dropoff times</p>
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={handleRetryBooking}
+                className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg hover:from-blue-600 hover:to-green-600 transition-colors font-semibold"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={handleCloseModal}
+                className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Close
+              </button>
             </div>
           </div>
-        </div>
+        ) : !showConfirmation ? (
+          // Booking Form - More Compact Layout
+          <form onSubmit={handleSubmit} className="p-4 space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Left Column - Calendar (Reduced Size) */}
+              <div className="lg:col-span-2">
+                <div className="transform scale-90 origin-top-left">
+                  {loadingBookedDates ? (
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-center h-64">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                        <p className="text-gray-600 text-sm">Loading availability...</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <CalendarPicker
+                      onDateRangeChange={handleDateRangeChange}
+                      bookedDates={bookedDates}
+                      minDate={new Date()}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column - Booking Summary (Compact) */}
+              <div className="space-y-4">
+                {/* Booking Summary */}
+                <div className="bg-green-50 p-4 rounded-xl border border-green-200">
+                  <h3 className="text-lg font-bold text-green-800 mb-3 flex items-center">
+                    <DollarSign className="h-4 w-4 mr-1" />
+                    Summary
+                  </h3>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Bike:</span>
+                      <span className="font-medium text-green-800">{bike.name}</span>
+                    </div>
+                    
+                    {selectedStartDate && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Start:</span>
+                          <span className="font-medium text-green-800">
+                            {format(selectedStartDate, 'MMM dd')}
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between">
+                          <span className="text-green-700">End:</span>
+                          <span className="font-medium text-green-800">
+                            {format(selectedEndDate || selectedStartDate, 'MMM dd')}
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Days:</span>
+                          <span className="font-medium text-green-800">{getDays()}</span>
+                        </div>
+                        
+                        <div className="border-t border-green-200 pt-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-green-800 font-bold">Total:</span>
+                            <span className="text-green-600 text-xl font-bold">${calculateCost().toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  <div className="mt-3 p-2 bg-white rounded-lg border border-green-200">
+                    <p className="text-green-700 text-xs">
+                      🎉 Lowest daily rates in HRM guaranteed!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Customer Information - Compact Grid */}
+            <div className="bg-gray-50 p-4 rounded-xl">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Customer Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <User className="h-3 w-3 inline mr-1" />
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.customerName}
+                    onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    placeholder="Enter your full name"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Phone className="h-3 w-3 inline mr-1" />
+                    Phone *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={formData.customerPhone}
+                    onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    placeholder="(902) 414-5894"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Mail className="h-3 w-3 inline mr-1" />
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.customerEmail}
+                    onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    placeholder="your@email.com"
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Special Requests
+                </label>
+                <textarea
+                  value={formData.specialRequests}
+                  onChange={(e) => setFormData({ ...formData, specialRequests: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  placeholder="Any special requirements..."
+                />
+              </div>
+            </div>
+
+            {/* Terms and Conditions Checkbox */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <div className="flex items-start space-x-3">
+                <input
+                  type="checkbox"
+                  id="acceptTerms"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  required
+                />
+                <div className="flex-1">
+                  <label htmlFor="acceptTerms" className="text-sm text-gray-700 cursor-pointer">
+                    <span className="flex items-center">
+                      <FileText className="h-4 w-4 mr-1 text-blue-600" />
+                      <span className="font-medium">I accept the Terms and Conditions *</span>
+                    </span>
+                    <p className="text-xs text-gray-600 mt-1">
+                      By checking this box, I acknowledge that I have read and agree to the 
+                      <Link 
+                        to="/terms" 
+                        target="_blank"
+                        className="text-blue-600 hover:text-blue-800 underline mx-1"
+                      >
+                        Terms and Conditions
+                      </Link>
+                      including damage liability, safety requirements, and rental policies.
+                    </p>
+                  </label>
+                </div>
+              </div>
+              
+              {!acceptedTerms && (
+                <div className="mt-2 text-xs text-red-600">
+                  You must accept the Terms and Conditions to proceed with your booking.
+                </div>
+              )}
+            </div>
+            
+            <div className="flex space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-2 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || !selectedStartDate || loadingBookedDates || !acceptedTerms}
+                className="flex-1 py-2 px-4 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg hover:from-blue-600 hover:to-green-600 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Processing...
+                  </span>
+                ) : loadingBookedDates ? (
+                  <span className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Loading...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center">
+                    <Zap className="h-4 w-4 mr-2" />
+                    Confirm Booking
+                  </span>
+                )}
+              </button>
+            </div>
+          </form>
+        ) : (
+          // Confirmation Screen with Animations (unchanged)
+          <div className="p-6 space-y-6">
+            {/* Success Animation */}
+            <div className="text-center">
+              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4 transform transition-all duration-1000 ${
+                animationStep >= 1 ? 'scale-100 rotate-0' : 'scale-0 rotate-180'
+              }`}>
+                <CheckCircle className={`h-12 w-12 text-green-600 transition-all duration-500 ${
+                  animationStep >= 2 ? 'scale-100' : 'scale-0'
+                }`} />
+              </div>
+              
+              <div className={`transform transition-all duration-700 ${
+                animationStep >= 2 ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
+              }`}>
+                <h3 className="text-2xl font-bold text-green-800 mb-2">Booking Confirmed!</h3>
+                <p className="text-green-600">Your bike rental is pending payment confirmation</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left Column - Payment Instructions */}
+              <div className={`space-y-4 transform transition-all duration-700 delay-300 ${
+                animationStep >= 3 ? 'translate-x-0 opacity-100' : '-translate-x-8 opacity-0'
+              }`}>
+                {/* Payment Instructions */}
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                  <h3 className="text-lg font-bold text-blue-800 mb-3 flex items-center">
+                    <CreditCard className="h-5 w-5 mr-2" />
+                    Payment Instructions
+                  </h3>
+                  <div className="space-y-3 text-blue-700">
+                    <div className="bg-white p-3 rounded-xl border-l-4 border-blue-500">
+                      <p className="font-semibold text-blue-800">📧 E-Transfer Details:</p>
+                      <p className="text-sm">Email: <strong>rentabikehrm@gmail.com</strong></p>
+                      <p className="text-sm">Amount: <strong>${calculateCost().toFixed(2)}</strong></p>
+                    </div>
+                    
+                    <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                      <p className="font-semibold text-yellow-800 flex items-center">
+                        <Clock className="h-4 w-4 mr-1" />
+                        Important Timing:
+                      </p>
+                      <ul className="text-sm text-yellow-700 mt-1 space-y-1">
+                        <li>• Your booking will be held for <strong>3 hours</strong></li>
+                        <li>• Send e-transfer within 3 hours to confirm</li>
+                        <li>• Booking will be automatically cancelled if payment not received</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="bg-green-50 p-3 rounded-xl border border-green-200">
+                      <p className="font-semibold text-green-800">✅ After Payment:</p>
+                      <ul className="text-sm text-green-700 mt-1 space-y-1">
+                        <li>• We'll confirm your booking via email</li>
+                        <li>• You'll receive pickup instructions</li>
+                        <li>• Bring valid ID for bike pickup</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Location & Booking Details */}
+              <div className={`space-y-4 transform transition-all duration-700 delay-500 ${
+                animationStep >= 3 ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
+              }`}>
+                {/* Location */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                    <MapPin className="h-5 w-5 mr-2" />
+                    Pickup Location
+                  </h3>
+                  
+                  <div className="mb-3">
+                    <p className="font-semibold text-gray-800">4 Leaman Dr, Dartmouth, NS B3A 2K5</p>
+                    <p className="text-sm text-gray-600">Free parking available on-site</p>
+                  </div>
+
+                  {/* Compact Map */}
+                  <div className="bg-white rounded-xl overflow-hidden shadow-md">
+                    <iframe
+                      src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2839.8234567890123!2d-63.5752!3d44.6488!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x4b5a23e6f1234567%3A0x1234567890abcdef!2s4%20Leaman%20Dr%2C%20Dartmouth%2C%20NS%20B3A%202K5!5e0!3m2!1sen!2sca!4v1234567890123!5m2!1sen!2sca"
+                      width="100%"
+                      height="150"
+                      style={{ border: 0 }}
+                      allowFullScreen
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      title="Rent A Bike Location"
+                    ></iframe>
+                  </div>
+                </div>
+
+                {/* Booking Summary */}
+                <div className="bg-green-50 p-4 rounded-xl border border-green-200">
+                  <h3 className="text-lg font-bold text-green-800 mb-3">Your Booking Details</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Bike:</span>
+                      <span className="font-medium text-green-800">{bike.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Customer:</span>
+                      <span className="font-medium text-green-800">{formData.customerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Email:</span>
+                      <span className="font-medium text-green-800">{formData.customerEmail}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-green-700">Phone:</span>
+                      <span className="font-medium text-green-800">{formData.customerPhone}</span>
+                    </div>
+                    {selectedStartDate && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Dates:</span>
+                          <span className="font-medium text-green-800">
+                            {format(selectedStartDate, 'MMM dd')} - {format(selectedEndDate || selectedStartDate, 'MMM dd, yyyy')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Duration:</span>
+                          <span className="font-medium text-green-800">{getDays()} day{getDays() > 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-green-200 pt-2 mt-2">
+                          <span className="text-green-700 font-bold">Total:</span>
+                          <span className="font-bold text-green-600 text-lg">${calculateCost().toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Sparkle Animation */}
+            <div className="relative">
+              {animationStep >= 3 && (
+                <>
+                  <Sparkles className="absolute top-0 left-1/4 h-6 w-6 text-yellow-400 animate-bounce" style={{ animationDelay: '0s' }} />
+                  <Sparkles className="absolute top-0 right-1/4 h-4 w-4 text-blue-400 animate-bounce" style={{ animationDelay: '0.5s' }} />
+                  <Sparkles className="absolute bottom-0 left-1/3 h-5 w-5 text-green-400 animate-bounce" style={{ animationDelay: '1s' }} />
+                </>
+              )}
+              
+              <div className="flex justify-center pt-4">
+                <button
+                  onClick={handleCloseModal}
+                  className="py-3 px-8 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-lg hover:from-blue-600 hover:to-green-600 transition-colors font-semibold shadow-lg"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-export default BookingsTab
+export default BookingModal
