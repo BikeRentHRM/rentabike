@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { X, User, Phone, Mail, Zap, DollarSign, MapPin, CreditCard, CheckCircle, Clock, Sparkles, AlertCircle, FileText } from 'lucide-react'
 import { format, differenceInDays } from 'date-fns'
 import { Link } from 'react-router-dom'
@@ -13,6 +13,8 @@ interface BookingModalProps {
 }
 
 const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSubmit }) => {
+  const modalContentRef = useRef<HTMLDivElement>(null)
+
   const [formData, setFormData] = useState({
     customerName: '',
     customerEmail: '',
@@ -136,6 +138,12 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
     try {
       await onSubmit(bookingData)
       setIsSubmitting(false)
+      
+      // Scroll modal content to top when confirmation is shown
+      if (modalContentRef.current) {
+        modalContentRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+
       setShowConfirmation(true)
       setTimeout(() => setAnimationStep(1), 100)
       setTimeout(() => setAnimationStep(2), 800)
@@ -191,7 +199,10 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
       onClick={handleBackdropClick}
     >
-      <div className="bg-white rounded-xl max-w-5xl w-full max-h-[95vh] overflow-y-auto shadow-2xl">
+      <div
+        ref={modalContentRef}
+        className="bg-white rounded-xl max-w-5xl w-full max-h-[95vh] overflow-y-auto shadow-2xl"
+      >
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-t-xl">
           <div>
