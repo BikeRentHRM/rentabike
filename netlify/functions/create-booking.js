@@ -36,21 +36,28 @@ exports.handler = async (event, context) => {
   try {
     const bookingData = JSON.parse(event.body)
 
-    // Validate required fields
+    // Validate required fields (including pickup_time & dropoff_time)
     const requiredFields = [
-      'bike_id', 'customer_name', 'customer_email', 'customer_phone',
-      'start_date', 'end_date', 'duration_hours', 'total_cost'
+      'bike_id',
+      'customer_name',
+      'customer_email',
+      'customer_phone',
+      'start_date',
+      'end_date',
+      'duration_hours',
+      'total_cost',
+      'pickup_time',
+      'dropoff_time'
     ]
-    
-    const missingFields = requiredFields.filter(field => !bookingData[field])
-    
+    const missingFields = requiredFields.filter(field => !(field in bookingData) || bookingData[field] === '')
+
     if (missingFields.length > 0) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ 
-          error: 'Missing required fields', 
-          missingFields 
+        body: JSON.stringify({
+          error: 'Missing required fields',
+          missingFields
         }),
       }
     }
@@ -61,39 +68,51 @@ exports.handler = async (event, context) => {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ 
-          error: 'Invalid email format' 
+        body: JSON.stringify({
+          error: 'Invalid email format'
         }),
       }
     }
 
-    // Validate dates
+    // Validate date logic
     const startDate = new Date(bookingData.start_date)
     const endDate = new Date(bookingData.end_date)
-    const now = new Date()
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
 
-    if (startDate < now.setHours(0, 0, 0, 0)) {
+    if (startDate < today) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ 
-          error: 'Start date cannot be in the past' 
+        body: JSON.stringify({
+          error: 'Start date cannot be in the past'
         }),
       }
     }
 
-    // Allow same day rentals - end date can be same as start date
     if (endDate < startDate) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ 
-          error: 'End date cannot be before start date' 
+        body: JSON.stringify({
+          error: 'End date cannot be before start date'
         }),
       }
     }
 
-    // Check if bike exists and is available
+    // Optional: Validate time strings are in HH:MM format
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/
+    if (!timeRegex.test(bookingData.pickup_time) || !timeRegex.test(bookingData.dropoff_time)) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'Invalid time format. Use "HH:MM".'
+        }),
+      }
+    }
+
+    // Fetch bike and check availability
     const { data: bike, error: bikeError } = await supabase
       .from('bikes')
       .select('id, name, type, available')
@@ -104,8 +123,8 @@ exports.handler = async (event, context) => {
       return {
         statusCode: 404,
         headers,
-        body: JSON.stringify({ 
-          error: 'Bike not found' 
+        body: JSON.stringify({
+          error: 'Bike not found'
         }),
       }
     }
@@ -114,16 +133,16 @@ exports.handler = async (event, context) => {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ 
-          error: 'Bike is not available for booking' 
+        body: JSON.stringify({
+          error: 'Bike is not available for booking'
         }),
       }
     }
 
-    // Check for conflicting bookings with proper date overlap logic
+    // Check for conflicting bookings
     const { data: conflictingBookings, error: conflictError } = await supabase
       .from('bookings')
-      .select('id, start_date, end_date, status')
+      .select('id, start_date, end_date, status, pickup_time, dropoff_time')
       .eq('bike_id', bookingData.bike_id)
       .in('status', ['pending', 'confirmed'])
 
@@ -131,31 +150,26 @@ exports.handler = async (event, context) => {
       throw conflictError
     }
 
-    // Check each existing booking for date overlap
-    const hasConflict = conflictingBookings?.some(existingBooking => {
-      const existingStart = new Date(existingBooking.start_date)
-      const existingEnd = new Date(existingBooking.end_date)
-      const newStart = new Date(bookingData.start_date)
-      const newEnd = new Date(bookingData.end_date)
+    const newStart = new Date(bookingData.start_date + 'T' + bookingData.pickup_time + ':00Z')
+    const newEnd = new Date(bookingData.end_date + 'T' + bookingData.dropoff_time + ':00Z')
 
-      // Check if dates overlap
-      // Two date ranges overlap if: start1 <= end2 AND start2 <= end1
-      const overlaps = newStart <= existingEnd && existingStart <= newEnd
-
-      return overlaps
+    const hasConflict = conflictingBookings.some(existing => {
+      const existingStart = new Date(existing.start_date + 'T' + (existing.pickup_time || '00:00') + ':00Z')
+      const existingEnd = new Date(existing.end_date + 'T' + (existing.dropoff_time || '23:59') + ':00Z')
+      return newStart <= existingEnd && existingStart <= newEnd
     })
 
     if (hasConflict) {
       return {
         statusCode: 409,
         headers,
-        body: JSON.stringify({ 
-          error: 'Bike is already booked for the selected dates. Please choose different dates or another bike.' 
+        body: JSON.stringify({
+          error: 'Bike is already booked for the selected dates and times. Please choose different slots.'
         }),
       }
     }
 
-    // Create the booking
+    // Insert new booking including pickup_time & dropoff_time
     const { data: newBooking, error: createError } = await supabase
       .from('bookings')
       .insert([{
@@ -165,10 +179,12 @@ exports.handler = async (event, context) => {
         customer_phone: bookingData.customer_phone.trim(),
         start_date: bookingData.start_date,
         end_date: bookingData.end_date,
+        pickup_time: bookingData.pickup_time,
+        dropoff_time: bookingData.dropoff_time,
         duration_hours: bookingData.duration_hours,
         total_cost: parseFloat(bookingData.total_cost),
-        status: 'pending',
-        special_requests: bookingData.special_requests?.trim() || null
+        special_requests: bookingData.special_requests?.trim() || null,
+        status: 'pending'
       }])
       .select(`
         *,
@@ -185,32 +201,20 @@ exports.handler = async (event, context) => {
       throw createError
     }
 
-    // Send confirmation emails
+    // Optionally send confirmation email without blocking response
     try {
-      // Get the current domain for the email function call
-      const origin = event.headers.origin || 
-                    event.headers.host ? `https://${event.headers.host}` : 
-                    'https://rent-bikes.ca'
-      
-      const emailResponse = await fetch(`${origin}/.netlify/functions/send-booking-email`, {
+      const origin = event.headers.origin || `https://${event.headers.host}`
+      await fetch(`${origin}/.netlify/functions/send-booking-email`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           booking: newBooking,
           bike: newBooking.bikes,
           type: 'confirmation'
         })
       })
-
-      const emailResult = await emailResponse.text()
-
-      if (!emailResponse.ok) {
-        // Don't fail the booking if email fails, but log it
-      }
-    } catch (emailError) {
-      // Don't fail the booking if email fails
+    } catch (e) {
+      // email failure should not abort booking
     }
 
     return {
@@ -219,29 +223,27 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({
         success: true,
         booking: newBooking,
-        message: 'Booking created successfully! You will receive a confirmation email shortly.'
+        message: 'Booking created successfully! Confirmation email will follow shortly.'
       }),
     }
 
   } catch (error) {
-    // Handle specific database errors
     if (error.code === '23505') {
       return {
         statusCode: 409,
         headers,
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           error: 'Booking conflict',
-          details: 'A booking already exists for this time period' 
+          details: 'A booking already exists for this period.'
         }),
       }
     }
-    
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         error: 'Internal server error',
-        details: error.message 
+        details: error.message || error.toString()
       }),
     }
   }
