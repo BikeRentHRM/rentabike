@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { ChevronLeft, ChevronRight, Info } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parse, parseISO } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO } from 'date-fns'
 import { Booking, Bike } from '../../types'
 
 interface BookingCalendarProps {
@@ -36,15 +36,11 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings, bikes }) =>
   // Get bookings for a specific date with proper date comparison
   const getBookingsForDate = (date: Date) => {
     return bookings.filter(booking => {
-      const startDate = new Date(booking.start_date)
-      const endDate = new Date(booking.end_date)
-      
-      // Normalize dates to compare only the date part (ignore time)
+      const startDate = parseISO(booking.start_date)
+      const endDate = parseISO(booking.end_date)
       const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
       const bookingStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
       const bookingEnd = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
-      
-      // Check if the date falls within the booking period (inclusive)
       return checkDate >= bookingStart && checkDate <= bookingEnd &&
              (booking.status === 'confirmed' || booking.status === 'pending')
     })
@@ -59,19 +55,15 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings, bikes }) =>
 
   const getDayClassName = (date: Date) => {
     const baseClasses = "min-h-[80px] p-2 border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-    
     if (!isSameMonth(date, currentMonth)) {
       return `${baseClasses} bg-gray-50 text-gray-400`
     }
-    
     if (isToday(date)) {
       return `${baseClasses} bg-blue-50 border-blue-300`
     }
-    
     if (selectedDate && isSameDay(date, selectedDate)) {
       return `${baseClasses} bg-blue-100 border-blue-400`
     }
-    
     return `${baseClasses} bg-white`
   }
 
@@ -187,9 +179,6 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings, bikes }) =>
             <div className="space-y-3">
               {selectedDateBookings.map((booking) => {
                 const bike = bikes.find(b => b.id === booking.bike_id)
-                // parse 24h time into Date for formatting
-                const pickupDate = parse(booking.pickup_time, 'HH:mm', new Date())
-                const dropoffDate = parse(booking.dropoff_time, 'HH:mm', new Date())
                 return (
                   <div key={booking.id} className="bg-white p-3 rounded border">
                     <div className="flex justify-between items-start">
@@ -197,15 +186,15 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings, bikes }) =>
                         <p className="font-medium text-gray-900">{booking.customer_name}</p>
                         <p className="text-sm text-gray-600">{bike?.name} ({bike?.type})</p>
                         <p className="text-sm text-gray-500">
-                          {format(new Date(booking.start_date), 'MMM dd')} - {format(new Date(booking.end_date), 'MMM dd')}
+                          {format(parseISO(booking.start_date), 'MMM dd')} - {format(parseISO(booking.end_date), 'MMM dd')}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Pick-up: {format(parseISO(`${booking.start_date.substring(0,10)}T${booking.pickup_time}`), 'hh:mm a')}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Drop-off: {format(parseISO(`${booking.end_date.substring(0,10)}T${booking.dropoff_time}`), 'hh:mm a')}
                         </p>
                         <p className="text-sm text-gray-500">${booking.total_cost}</p>
-                        <p className="text-sm text-gray-500">
-                          Pick-up: {format(pickupDate, 'h:mm a')}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Drop-off: {format(dropoffDate, 'h:mm a')}
-                        </p>
                       </div>
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(booking.status)}`}>
                         {booking.status}
