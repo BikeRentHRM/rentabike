@@ -1,5 +1,5 @@
 import React from 'react'
-import { Shield, DollarSign, Clock, Award, Users, Wrench } from 'lucide-react'
+import { Shield, DollarSign, Clock, Award, Users, Wrench, Bike } from 'lucide-react'
 
 const WhyChooseUs: React.FC = () => {
   const features = [
@@ -34,9 +34,9 @@ const WhyChooseUs: React.FC = () => {
       color: "indigo"
     },
     {
-      icon: <Wrench className="h-8 w-8" />,
-      title: "Full Support",
-      description: "24/7 roadside assistance and free helmet with every rental.",
+      icon: <Bike className="h-8 w-8" />,
+      title: "Free Helmet & Lock",
+      description: "Complimentary helmet and bike lock provided with every rental.",
       color: "red"
     }
   ]

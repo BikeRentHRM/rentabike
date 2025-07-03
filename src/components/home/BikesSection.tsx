@@ -23,7 +23,7 @@ const BikesSection: React.FC<BikesSectionProps> = ({ bikes, loading, onBookBike 
             Choose Your Perfect Ride
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
-            From city cruisers to mountain bikes, we have the perfect bike for every adventure in Halifax Regional Municipality
+            Whether you're exploring trails or cruising through the city, our mountain bikes are ready for every adventure in Halifax Regional Municipality.
           </p>
           
           {/* Trust Indicators */}
@@ -38,7 +38,7 @@ const BikesSection: React.FC<BikesSectionProps> = ({ bikes, loading, onBookBike 
             </div>
             <div className="flex items-center">
               <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-              <span>24/7 roadside support</span>
+              <span>Free lock included</span>
             </div>
           </div>
         </div>
