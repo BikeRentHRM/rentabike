@@ -79,10 +79,10 @@ exports.handler = async (event, context) => {
     }
 
     // Get the admin dashboard URL from the request origin
-    const origin = event.headers.origin || 
-                  event.headers.host ? `https://${event.headers.host}` : 
+    const origin = event.headers.origin ||
+                  event.headers.host ? `https://${event.headers.host}` :
                   'https://classy-semolina-42a7a1.netlify.app'
-    
+
     const adminDashboardUrl = `${origin}/admin`
 
     // Format dates for display in Halifax timezone
@@ -141,6 +141,8 @@ exports.handler = async (event, context) => {
               <p style="margin: 5px 0; color: #374151;"><strong>Bike:</strong> ${bike.name} (${bike.type})</p>
               <p style="margin: 5px 0; color: #374151;"><strong>Start:</strong> ${startDate}</p>
               <p style="margin: 5px 0; color: #374151;"><strong>End:</strong> ${endDate}</p>
+              <p style="margin: 5px 0; color: #374151;"><strong>Pick-up Time:</strong> ${booking.pickup_time}</p>
+              <p style="margin: 5px 0; color: #374151;"><strong>Drop-off Time:</strong> ${booking.dropoff_time}</p>
               <p style="margin: 5px 0; color: #374151;"><strong>Duration:</strong> ${days} day(s)</p>
               <p style="margin: 5px 0; color: #374151;"><strong>Total Cost:</strong> $${booking.total_cost}</p>
               <p style="margin: 5px 0; color: #374151;"><strong>Status:</strong> <span style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 12px; font-size: 12px;">PENDING PAYMENT</span></p>
@@ -194,6 +196,8 @@ exports.handler = async (event, context) => {
             <p><strong>Bike:</strong> ${bike.name} (${bike.type})</p>
             <p><strong>Start:</strong> ${startDate}</p>
             <p><strong>End:</strong> ${endDate}</p>
+            <p><strong>Pick-up Time:</strong> ${booking.pickup_time}</p>
+            <p><strong>Drop-off Time:</strong> ${booking.dropoff_time}</p>
             <p><strong>Duration:</strong> ${days} day(s)</p>
             <p><strong>Total Cost:</strong> $${booking.total_cost}</p>
             <p><strong>Status:</strong> ${booking.status}</p>
@@ -242,13 +246,13 @@ exports.handler = async (event, context) => {
 
       // Send both emails with proper error handling
       try {
-        const customerResult = await transporter.sendMail(customerMailOptions)
+        await transporter.sendMail(customerMailOptions)
       } catch (customerEmailError) {
         throw new Error(`Failed to send customer confirmation email: ${customerEmailError.message}`)
       }
 
       try {
-        const adminResult = await transporter.sendMail(adminMailOptions)
+        await transporter.sendMail(adminMailOptions)
       } catch (adminEmailError) {
         // Don't throw here - customer email is more important
       }
@@ -321,6 +325,8 @@ exports.handler = async (event, context) => {
               <p style="margin: 5px 0; color: #374151;"><strong>Bike:</strong> ${bike.name} (${bike.type})</p>
               <p style="margin: 5px 0; color: #374151;"><strong>Start:</strong> ${startDate}</p>
               <p style="margin: 5px 0; color: #374151;"><strong>End:</strong> ${endDate}</p>
+              <p style="margin: 5px 0; color: #374151;"><strong>Pick-up Time:</strong> ${booking.pickup_time}</p>
+              <p style="margin: 5px 0; color: #374151;"><strong>Drop-off Time:</strong> ${booking.dropoff_time}</p>
               <p style="margin: 5px 0; color: #374151;"><strong>Duration:</strong> ${days} day(s)</p>
               <p style="margin: 5px 0; color: #374151;"><strong>Total Cost:</strong> $${booking.total_cost}</p>
             </div>
@@ -397,13 +403,13 @@ exports.handler = async (event, context) => {
       }
 
       try {
-        const statusResult = await transporter.sendMail(statusUpdateMailOptions)
+        await transporter.sendMail(statusUpdateMailOptions)
       } catch (statusEmailError) {
         throw new Error(`Failed to send customer status update email: ${statusEmailError.message}`)
       }
 
       try {
-        const adminStatusResult = await transporter.sendMail(adminStatusMailOptions)
+        await transporter.sendMail(adminStatusMailOptions)
       } catch (adminStatusEmailError) {
         // Don't throw here - customer email is more important
       }
@@ -415,18 +421,18 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ 
-        success: true, 
-        message: 'Emails sent successfully' 
+      body: JSON.stringify({
+        success: true,
+        message: 'Emails sent successfully'
       }),
     }
   } catch (error) {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         error: 'Failed to send emails',
-        details: error.message 
+        details: error.message
       }),
     }
   }
