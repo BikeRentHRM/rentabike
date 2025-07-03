@@ -63,7 +63,7 @@ const HeroSection: React.FC = () => {
         {/* Enhanced description */}
         <p className="text-xl sm:text-2xl mb-4 text-white max-w-3xl mx-auto leading-relaxed drop-shadow-lg">
           Affordable bike rentals starting at just{' '}
-          <span className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-green-400 bg-clip-text text-transparent drop-shadow-none">$20/day</span>
+          <span className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-green-400 bg-clip-text text-transparent drop-shadow-none">$10/day</span>
         </p>
         
         <p className="text-lg sm:text-xl mb-8 text-gray-100 max-w-2xl mx-auto drop-shadow-lg">
