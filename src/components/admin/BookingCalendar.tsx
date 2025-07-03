@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { ChevronLeft, ChevronRight, Info } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parse, parseISO } from 'date-fns'
 import { Booking, Bike } from '../../types'
 
 interface BookingCalendarProps {
@@ -187,6 +187,9 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings, bikes }) =>
             <div className="space-y-3">
               {selectedDateBookings.map((booking) => {
                 const bike = bikes.find(b => b.id === booking.bike_id)
+                // parse 24h time into Date for formatting
+                const pickupDate = parse(booking.pickup_time, 'HH:mm', new Date())
+                const dropoffDate = parse(booking.dropoff_time, 'HH:mm', new Date())
                 return (
                   <div key={booking.id} className="bg-white p-3 rounded border">
                     <div className="flex justify-between items-start">
@@ -197,6 +200,12 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings, bikes }) =>
                           {format(new Date(booking.start_date), 'MMM dd')} - {format(new Date(booking.end_date), 'MMM dd')}
                         </p>
                         <p className="text-sm text-gray-500">${booking.total_cost}</p>
+                        <p className="text-sm text-gray-500">
+                          Pick-up: {format(pickupDate, 'h:mm a')}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Drop-off: {format(dropoffDate, 'h:mm a')}
+                        </p>
                       </div>
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(booking.status)}`}>
                         {booking.status}
