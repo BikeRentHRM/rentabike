@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom animations for loading screen */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.8), 0 0 30px rgba(16, 185, 129, 0.6);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 4s linear infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Smooth transitions for all elements */
+* {
+  transition-property: opacity, transform;
+  transition-duration: 0.3s;
+  transition-timing-function: ease-in-out;
+}
+
+/* Ensure images load smoothly */
+img {
+  transition: opacity 0.3s ease-in-out;
+}
+
+img[loading] {
+  opacity: 0;
+}
+
+img[loaded] {
+  opacity: 1;
+}
+
+/* Fix for mobile viewport height issues */
+@supports (-webkit-touch-callout: none) {
+  .h-screen {
+    height: -webkit-fill-available;
+  }
+  .min-h-screen {
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* Ensure hero section always takes full viewport */
+.hero-section {
+  height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for modern browsers */
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Mobile-specific adjustments */
+@media screen and (max-width: 640px) {
+  /* Ensure text doesn't get cut off on small screens */
+  .hero-section {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+  }
+  
+  /* Prevent text overflow on very small screens */
+  h1 {
+    word-break: break-word;
+    hyphens: auto;
+  }
+}
+
+@media screen and (max-height: 600px) {
+  .hero-section {
+    min-height: 600px;
+  }
+}
+
+/* Ensure banner text wraps properly on small screens */
+@media screen and (max-width: 480px) {
+  .hero-banner {
+    font-size: 0.75rem;
+    padding: 0.5rem 1rem;
+    line-height: 1.2;
+    white-space: normal;
+    text-align: center;
+  }
+}
