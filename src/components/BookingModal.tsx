@@ -22,6 +22,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
 
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null)
   const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null)
+  const [pickupTime, setPickupTime] = useState<string>('09:00')
+  const [dropoffTime, setDropoffTime] = useState<string>('17:00')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [showError, setShowError] = useState(false)
@@ -36,7 +38,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
     if (!bikeId) return
 
     setLoadingBookedDates(true)
-    
+
     try {
       const response = await fetch(`/.netlify/functions/get-booked-dates?bike_id=${bikeId}`, {
         method: 'GET',
@@ -49,10 +51,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
 
       if (response.ok) {
         // Convert ISO strings back to Date objects
-        const dates = (data.bookedDates || []).map((dateStr: string) => {
-          return new Date(dateStr)
-        })
-        
+        const dates = (data.bookedDates || []).map((dateStr: string) => new Date(dateStr))
         setBookedDates(dates)
       } else {
         setBookedDates([])
@@ -74,12 +73,10 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
   const handleDateRangeChange = (startDate: Date | null, endDate: Date | null) => {
     setSelectedStartDate(startDate)
     setSelectedEndDate(endDate)
-    // Clear any previous errors when dates change
     setShowError(false)
     setErrorMessage('')
   }
 
-  // Handle clicking outside the modal
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget && !showConfirmation) {
       onClose()
@@ -88,23 +85,20 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
 
   const calculateCost = () => {
     if (!bike || !selectedStartDate) return 0
-    
     const endDate = selectedEndDate || selectedStartDate
     const days = Math.max(1, differenceInDays(endDate, selectedStartDate) + 1)
-    
     return days * bike.price_per_day
   }
 
   const getDays = () => {
     if (!selectedStartDate) return 0
-    
     const endDate = selectedEndDate || selectedStartDate
     return Math.max(1, differenceInDays(endDate, selectedStartDate) + 1)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!selectedStartDate) {
       setErrorMessage('Please select rental dates')
       setShowError(true)
@@ -116,14 +110,14 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
       setShowError(true)
       return
     }
-    
+
     setIsSubmitting(true)
     setShowError(false)
     setErrorMessage('')
-    
+
     const endDate = selectedEndDate || selectedStartDate
     const days = getDays()
-    
+
     const bookingData = {
       bike_id: bike?.id,
       customer_name: formData.customerName,
@@ -133,20 +127,20 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
       end_date: endDate.toISOString(),
       duration_hours: days * 24,
       total_cost: calculateCost(),
+      pickup_time: pickupTime,
+      dropoff_time: dropoffTime,
       special_requests: formData.specialRequests,
       status: 'pending'
     }
-    
+
     try {
       await onSubmit(bookingData)
       setIsSubmitting(false)
       setShowConfirmation(true)
-      
-      // Start animation sequence
       setTimeout(() => setAnimationStep(1), 100)
       setTimeout(() => setAnimationStep(2), 800)
       setTimeout(() => setAnimationStep(3), 1500)
-    } catch (error) {
+    } catch (error: any) {
       setIsSubmitting(false)
       setErrorMessage(error.message || 'Failed to create booking. Please try again.')
       setShowError(true)
@@ -164,13 +158,11 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
   const handleRetryBooking = () => {
     setShowError(false)
     setErrorMessage('')
-    // Refresh booked dates in case they changed
     if (bike?.id) {
       fetchBookedDates(bike.id)
     }
   }
 
-  // Reset form when modal opens/closes
   useEffect(() => {
     if (isOpen) {
       setFormData({
@@ -181,6 +173,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
       })
       setSelectedStartDate(null)
       setSelectedEndDate(null)
+      setPickupTime('09:00')
+      setDropoffTime('17:00')
       setShowConfirmation(false)
       setShowError(false)
       setErrorMessage('')
@@ -198,15 +192,18 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
       onClick={handleBackdropClick}
     >
       <div className="bg-white rounded-xl max-w-5xl w-full max-h-[95vh] overflow-y-auto shadow-2xl">
+        {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-t-xl">
           <div>
             <h2 className="text-xl font-bold">
               {showConfirmation ? 'Booking Confirmed!' : showError ? 'Booking Failed' : `Book ${bike.name}`}
             </h2>
             <p className="text-blue-100 text-sm">
-              {showConfirmation ? 'Payment required within 3 hours' : 
-               showError ? 'Please try again or contact us' :
-               'Best daily rates in Halifax Regional Municipality!'}
+              {showConfirmation
+                ? 'Payment required within 3 hours'
+                : showError
+                ? 'Please try again or contact us'
+                : 'Best daily rates in Halifax Regional Municipality!'}
             </p>
           </div>
           <button
@@ -216,19 +213,17 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
             <X className="h-5 w-5" />
           </button>
         </div>
-        
+
+        {/* Error State */}
         {showError ? (
-          // Error Screen
           <div className="p-6 space-y-6">
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-100 mb-4">
                 <AlertCircle className="h-12 w-12 text-red-600" />
               </div>
-              
               <h3 className="text-2xl font-bold text-red-800 mb-2">Booking Failed</h3>
               <p className="text-red-600 mb-4">{errorMessage}</p>
             </div>
-
             <div className="bg-red-50 p-4 rounded-xl border border-red-200">
               <h4 className="font-semibold text-red-800 mb-2">What you can do:</h4>
               <ul className="text-red-700 text-sm space-y-1">
@@ -238,7 +233,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                 <li>• Email us at rentabikehrm@gmail.com</li>
               </ul>
             </div>
-            
             <div className="flex space-x-3">
               <button
                 onClick={handleRetryBooking}
@@ -255,10 +249,10 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
             </div>
           </div>
         ) : !showConfirmation ? (
-          // Booking Form - More Compact Layout
+          /* Booking Form */
           <form onSubmit={handleSubmit} className="p-4 space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Left Column - Calendar (Reduced Size) */}
+              {/* Calendar & Time Pickers (Left Column) */}
               <div className="lg:col-span-2">
                 <div className="transform scale-90 origin-top-left">
                   {loadingBookedDates ? (
@@ -276,23 +270,47 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                     />
                   )}
                 </div>
+                {/* New Time Fields */}
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Pick-up Time *
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Drop-off Time *
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={dropoffTime}
+                      onChange={(e) => setDropoffTime(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Right Column - Booking Summary (Compact) */}
+              {/* Booking Summary (Right Column) */}
               <div className="space-y-4">
-                {/* Booking Summary */}
                 <div className="bg-green-50 p-4 rounded-xl border border-green-200">
                   <h3 className="text-lg font-bold text-green-800 mb-3 flex items-center">
                     <DollarSign className="h-4 w-4 mr-1" />
                     Summary
                   </h3>
-                  
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-green-700">Bike:</span>
                       <span className="font-medium text-green-800">{bike.name}</span>
                     </div>
-                    
                     {selectedStartDate && (
                       <>
                         <div className="flex justify-between">
@@ -301,19 +319,25 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                             {format(selectedStartDate, 'MMM dd')}
                           </span>
                         </div>
-                        
                         <div className="flex justify-between">
                           <span className="text-green-700">End:</span>
                           <span className="font-medium text-green-800">
                             {format(selectedEndDate || selectedStartDate, 'MMM dd')}
                           </span>
                         </div>
-                        
                         <div className="flex justify-between">
                           <span className="text-green-700">Days:</span>
                           <span className="font-medium text-green-800">{getDays()}</span>
                         </div>
-                        
+                        {/* Display Time in Summary */}
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Pick-up:</span>
+                          <span className="font-medium text-green-800">{pickupTime}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Drop-off:</span>
+                          <span className="font-medium text-green-800">{dropoffTime}</span>
+                        </div>
                         <div className="border-t border-green-200 pt-2">
                           <div className="flex justify-between items-center">
                             <span className="text-green-800 font-bold">Total:</span>
@@ -323,7 +347,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                       </>
                     )}
                   </div>
-                  
                   <div className="mt-3 p-2 bg-white rounded-lg border border-green-200">
                     <p className="text-green-700 text-xs">
                       🎉 Lowest daily rates in HRM guaranteed!
@@ -333,7 +356,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
               </div>
             </div>
 
-            {/* Customer Information - Compact Grid */}
+            {/* Customer Information */}
             <div className="bg-gray-50 p-4 rounded-xl">
               <h3 className="text-lg font-semibold text-gray-900 mb-3">Customer Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -351,7 +374,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                     placeholder="Enter your full name"
                   />
                 </div>
-                
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     <Phone className="h-3 w-3 inline mr-1" />
@@ -366,7 +388,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                     placeholder="(902) 414-5894"
                   />
                 </div>
-                
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     <Mail className="h-3 w-3 inline mr-1" />
@@ -382,7 +403,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                   />
                 </div>
               </div>
-              
               <div className="mt-3">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Special Requests
@@ -397,7 +417,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
               </div>
             </div>
 
-            {/* Terms and Conditions Checkbox */}
+            {/* Terms & Conditions */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
               <div className="flex items-start space-x-3">
                 <input
@@ -415,12 +435,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                       <span className="font-medium">I accept the Terms and Conditions *</span>
                     </span>
                     <p className="text-xs text-gray-600 mt-1">
-                      By checking this box, I acknowledge that I have read and agree to the 
-                      <Link 
-                        to="/terms" 
-                        target="_blank"
-                        className="text-blue-600 hover:text-blue-800 underline mx-1"
-                      >
+                      By checking this box, I acknowledge that I have read and agree to the{' '}
+                      <Link to="/terms" target="_blank" className="text-blue-600 hover:text-blue-800 underline mx-1">
                         Terms and Conditions
                       </Link>
                       including damage liability, safety requirements, and rental policies.
@@ -428,14 +444,14 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                   </label>
                 </div>
               </div>
-              
               {!acceptedTerms && (
                 <div className="mt-2 text-xs text-red-600">
                   You must accept the Terms and Conditions to proceed with your booking.
                 </div>
               )}
             </div>
-            
+
+            {/* Action Buttons */}
             <div className="flex space-x-3 pt-2">
               <button
                 type="button"
@@ -469,32 +485,38 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
             </div>
           </form>
         ) : (
-          // Confirmation Screen with Animations (unchanged)
+          /* Confirmation Screen */
           <div className="p-6 space-y-6">
-            {/* Success Animation */}
             <div className="text-center">
-              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4 transform transition-all duration-1000 ${
-                animationStep >= 1 ? 'scale-100 rotate-0' : 'scale-0 rotate-180'
-              }`}>
-                <CheckCircle className={`h-12 w-12 text-green-600 transition-all duration-500 ${
-                  animationStep >= 2 ? 'scale-100' : 'scale-0'
-                }`} />
+              <div
+                className={`inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4 transform transition-all duration-1000 ${
+                  animationStep >= 1 ? 'scale-100 rotate-0' : 'scale-0 rotate-180'
+                }`}
+              >
+                <CheckCircle
+                  className={`h-12 w-12 text-green-600 transition-all duration-500 ${
+                    animationStep >= 2 ? 'scale-100' : 'scale-0'
+                  }`}
+                />
               </div>
-              
-              <div className={`transform transition-all duration-700 ${
-                animationStep >= 2 ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
-              }`}>
+
+              <div
+                className={`transform transition-all duration-700 ${
+                  animationStep >= 2 ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
+                }`}
+              >
                 <h3 className="text-2xl font-bold text-green-800 mb-2">Booking Confirmed!</h3>
                 <p className="text-green-600">Your bike rental is pending payment confirmation</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left Column - Payment Instructions */}
-              <div className={`space-y-4 transform transition-all duration-700 delay-300 ${
-                animationStep >= 3 ? 'translate-x-0 opacity-100' : '-translate-x-8 opacity-0'
-              }`}>
-                {/* Payment Instructions */}
+              {/* Payment Instructions */}
+              <div
+                className={`space-y-4 transform transition-all duration-700 delay-300 ${
+                  animationStep >= 3 ? 'translate-x-0 opacity-100' : '-translate-x-8 opacity-0'
+                }`}
+              >
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
                   <h3 className="text-lg font-bold text-blue-800 mb-3 flex items-center">
                     <CreditCard className="h-5 w-5 mr-2" />
@@ -506,7 +528,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                       <p className="text-sm">Email: <strong>rentabikehrm@gmail.com</strong></p>
                       <p className="text-sm">Amount: <strong>${calculateCost().toFixed(2)}</strong></p>
                     </div>
-                    
+
                     <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
                       <p className="font-semibold text-yellow-800 flex items-center">
                         <Clock className="h-4 w-4 mr-1" />
@@ -518,7 +540,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                         <li>• Booking will be automatically cancelled if payment not received</li>
                       </ul>
                     </div>
-                    
+
                     <div className="bg-green-50 p-3 rounded-xl border border-green-200">
                       <p className="font-semibold text-green-800">✅ After Payment:</p>
                       <ul className="text-sm text-green-700 mt-1 space-y-1">
@@ -531,23 +553,23 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                 </div>
               </div>
 
-              {/* Right Column - Location & Booking Details */}
-              <div className={`space-y-4 transform transition-all duration-700 delay-500 ${
-                animationStep >= 3 ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
-              }`}>
-                {/* Location */}
+              {/* Location & Details */}
+              <div
+                className={`space-y-4 transform transition-all duration-700 delay-500 ${
+                  animationStep >= 3 ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
+                }`}
+              >
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                   <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
                     <MapPin className="h-5 w-5 mr-2" />
                     Pickup Location
                   </h3>
-                  
+
                   <div className="mb-3">
                     <p className="font-semibold text-gray-800">4 Leaman Dr, Dartmouth, NS B3A 2K5</p>
                     <p className="text-sm text-gray-600">Free parking available on-site</p>
                   </div>
 
-                  {/* Compact Map */}
                   <div className="bg-white rounded-xl overflow-hidden shadow-md">
                     <iframe
                       src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2839.8234567890123!2d-63.5752!3d44.6488!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x4b5a23e6f1234567%3A0x1234567890abcdef!2s4%20Leaman%20Dr%2C%20Dartmouth%2C%20NS%20B3A%202K5!5e0!3m2!1sen!2sca!4v1234567890123!5m2!1sen!2sca"
@@ -558,11 +580,10 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                       loading="lazy"
                       referrerPolicy="no-referrer-when-downgrade"
                       title="Rent A Bike Location"
-                    ></iframe>
+                    />
                   </div>
                 </div>
 
-                {/* Booking Summary */}
                 <div className="bg-green-50 p-4 rounded-xl border border-green-200">
                   <h3 className="text-lg font-bold text-green-800 mb-3">Your Booking Details</h3>
                   <div className="space-y-2 text-sm">
@@ -592,7 +613,17 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                         </div>
                         <div className="flex justify-between">
                           <span className="text-green-700">Duration:</span>
-                          <span className="font-medium text-green-800">{getDays()} day{getDays() > 1 ? 's' : ''}</span>
+                          <span className="font-medium text-green-800">
+                            {getDays()} day{getDays() > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Pick-up Time:</span>
+                          <span className="font-medium text-green-800">{pickupTime}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Drop-off Time:</span>
+                          <span className="font-medium text-green-800">{dropoffTime}</span>
                         </div>
                         <div className="flex justify-between border-t border-green-200 pt-2 mt-2">
                           <span className="text-green-700 font-bold">Total:</span>
@@ -604,8 +635,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                 </div>
               </div>
             </div>
-            
-            {/* Sparkle Animation */}
+
+            {/* Sparkle Animation + Close */}
             <div className="relative">
               {animationStep >= 3 && (
                 <>
@@ -614,7 +645,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ bike, isOpen, onClose, onSu
                   <Sparkles className="absolute bottom-0 left-1/3 h-5 w-5 text-green-400 animate-bounce" style={{ animationDelay: '1s' }} />
                 </>
               )}
-              
               <div className="flex justify-center pt-4">
                 <button
                   onClick={handleCloseModal}
